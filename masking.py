@@ -1,26 +1,28 @@
 import numpy as np
-matrixcopy = matrix.copy()
+matrixcopy = matrix.copy() # create copy to preserve pre-masked preset patterns
 
+#begin to enter data
 row = size - 1
 count = 0
 col = size - 1
 dir_up = True
 
 while col > 0:
-    if col == 6:
+    if col == 6: # skip over timing pattern column
         col -= 1
     row_range = range(size - 1, -1, -1) if dir_up else range(size)
     for row in row_range:
-        for c in [col, col - 1]:
+        for c in [col, col - 1]: #enter data in a zig-zag pattern
             if matrix[row][c] == -1:
-                if count < len(message_final):
+                if count < len(message_final): # to prevent errors from occuring
                     matrix[row][c] = int(message_final[count])
                     count += 1
-    dir_up = not dir_up
+    dir_up = not dir_up # go from moving up to down and vice versa
     col -= 2
 
-matrix[matrix == -1] = 0
+matrix[matrix == -1] = 0 # fill in extra bits for versions with odd amounts of capacity
 
+#masking algorithm, all patterns are clearly coded
 def domask(matrix, mask):
     size = matrix.shape[0]
     masked = matrix.copy()
@@ -53,6 +55,7 @@ def domask(matrix, mask):
 
     return masked
 
+#penalty calculation algorithm using each piece of criteria, follows ISO standard
 def penalty(matrix):
     size = matrix.shape[0]
     total = 0
@@ -103,6 +106,7 @@ best_score = float('inf')
 best_mask = None
 best_matrix = None
 
+# test all 8 masking patterns to find the one with least penalty
 for mask in range(8):
     candidate = domask(matrix, mask)
     score = penalty(candidate)
@@ -112,8 +116,10 @@ for mask in range(8):
         best_matrix = candidate
         print(mask)
 
+#execute mask
 matrix = domask(matrix, best_mask)
 
+#restore preset patterns using matrixcopy
 for i in range(size):
     for j in range(size):
         if matrixcopy[i][j] != -1:
