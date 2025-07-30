@@ -1,5 +1,8 @@
+#code overall prepares the data for insertion into the matrix
+
 import numpy as np
 
+#these two tables store the total amounts of data and error correction bits in each version due to there being no easy formula
 data_lengths = {
     1:  {'L': 19,  'M': 16,  'Q': 13,  'H': 9},
     2:  {'L': 34,  'M': 28,  'Q': 22,  'H': 16},
@@ -86,29 +89,31 @@ ec_lengths = {
     40: {'L': 750, 'M': 1372,'Q': 2040, 'H': 2430},
 }
 
+#input all necessary inputs, fetch error correction and data lengths
 message = input("Message: ")
 version = int(input("Version: "))
 level = input("Error Correction Level:")
-level = level.upper()
+level = level.upper() #Make the ec level uppercase for easier table access
 ec_length = ec_lengths[version][level]
 data_length = data_lengths[version][level]
 
+#function to convert data into pre-error correction bitstream
 def conversion(message, version, level):
     count_bits = f'{len(message):08b}'
     data_bits = ''.join(f'{b:08b}' for b in message.encode('utf-8'))
-    bitstream = '0100' + count_bits + data_bits
+    bitstream = '0100' + count_bits + data_bits #append message length and encoding info to data
     remaining = data_length * 8 - len(bitstream)
     if remaining > 0:
-        bitstream += '0' * min(4, remaining)
+        bitstream += '0' * min(4, remaining) #pad with up to 4 zeroes
     while len(bitstream) % 8 != 0:
-        bitstream += '0'
+        bitstream += '0' # pad up to multiple of 8
     codewords = [int(bitstream[i:i+8], 2) for i in range(0, len(bitstream), 8)]
     pad_bytes = [0xEC, 0x11]
     i = 0
     while len(codewords) < data_length:
-        codewords.append(pad_bytes[i % 2])
+        codewords.append(pad_bytes[i % 2]) # alternate padding patterns
         i += 1
-    if len(bitstream) > data_length * 8:
+    if len(bitstream) > data_length * 8: # if message too long, terminate program
         raise ValueError("Message too long")
     return codewords
 
@@ -120,9 +125,10 @@ converted = conversion(message, version, level)
 poly = 0x11D
 fieldsize = 256
 
-exp = [0] * (2 * fieldsize)
+exp = [0] * (2 * fieldsize) #exp table is twice as long for addition-related reasons
 log = [0] * fieldsize
 
+# generate tables by repeatedly left-shifting and doing xor if it passes the limit
 def gentables():
     x = 1
     for i in range(fieldsize - 1):
@@ -132,15 +138,17 @@ def gentables():
         if x & 0x100:
             x ^= poly
     for i in range(fieldsize - 1, 2 * fieldsize):
-        exp[i] = exp[i - (fieldsize - 1)]
+        exp[i] = exp[i - (fieldsize - 1)] #generate redundancy
 
 gentables()
 
+#multiplication using our exp and log tables
 def mult(x, y):
     if x == 0 or y == 0:
         return 0
     return exp[log[x] + log[y]]
 
+# polynomial multiplication using the mult function and xor
 def polymult(p, q):
     result = [0] * (len(p) + len(q) - 1)
     for i in range(len(p)):
@@ -148,6 +156,7 @@ def polymult(p, q):
             result[i + j] ^= mult(p[i], q[j])
     return result
 
+# standard polydiv algorithm
 def polydiv(p, q):
     p = list(p)
     q = list(q)
@@ -166,12 +175,14 @@ def polydiv(p, q):
     remainder = result[-(len(q) - 1):]
     return remainder
 
+# generate generator polynomial by multiplying terms
 def generator(ec_length):
     gen = [1]
     for i in range(ec_length):
         gen = polymult(gen, [1, exp[i]])  # (x - α^i)
     return gen
 
+# generate data for interleaved ec and data bits
 qr_blocks = {
     (1, 'L'):  ([1, 0], [19, 0], 7),    (1, 'M'):  ([1, 0], [16, 0], 10), (1, 'Q'):  ([1, 0], [13, 0], 13),   (1, 'H'):  ([1, 0], [9, 0], 17),
     (2, 'L'):  ([1, 0], [34, 0], 10),   (2, 'M'):  ([1, 0], [28, 0], 16), (2, 'Q'):  ([1, 0], [22, 0], 22),   (2, 'H'):  ([1, 0], [16, 0], 28),
@@ -223,6 +234,8 @@ total_blocks = sum(group_counts)
 data_blocks = []
 ecc_blocks = []
 
+
+# breakup blocks
 i = 0
 for group_id in range(2):
     for _ in range(group_counts[group_id]):
@@ -235,6 +248,7 @@ for group_id in range(2):
 
 interleaved = []
 
+# interleave blocks
 max_data_len = max(len(b) for b in data_blocks)
 for i in range(max_data_len):
     for block in data_blocks:
